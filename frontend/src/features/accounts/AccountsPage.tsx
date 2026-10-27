@@ -100,11 +100,17 @@ export default function AccountsPage() {
   async function register() {
     setMessage('');
 
-    if (!name.trim() || !email.trim() || !password || !phone.trim()) {
-      setMessage('Please fill in all fields.');
+    const missing = [
+      !name.trim() && 'full name',
+      !email.trim() && 'email address',
+      !password && 'password',
+    ].filter(Boolean);
+    if (missing.length) {
+      setMessage(`Please enter your ${missing.join(', ')}.`);
       return;
     }
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
+    // Same pattern as the API's EMAIL_PATTERN, so a 422 never surprises the user.
+    if (!/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(email.trim())) {
       setMessage('Please enter a valid email address.');
       return;
     }
@@ -112,8 +118,9 @@ export default function AccountsPage() {
       setMessage('Password must contain at least 8 characters.');
       return;
     }
-    if (!/^[6-9][0-9]{9}$/.test(phone.trim())) {
-      setMessage('Enter a 10-digit Indian mobile number.');
+    // Phone is optional (the API stores NULL), but must be valid when given.
+    if (phone.trim() && !/^[6-9][0-9]{9}$/.test(phone.trim())) {
+      setMessage('Enter a 10-digit Indian mobile number, or leave it blank.');
       return;
     }
 
@@ -121,7 +128,7 @@ export default function AccountsPage() {
       const res = await api.post<{ access_token: string; user: ApiUser }>('/auth/signup', {
         full_name: name.trim(),
         email: email.trim().toLowerCase(),
-        phone: phone.trim(),
+        phone: phone.trim() || null,
         password,
       });
       signedIn(res.data.access_token, res.data.user);
@@ -133,6 +140,10 @@ export default function AccountsPage() {
 
   async function login() {
     setMessage('');
+    if (!email.trim() || !password) {
+      setMessage('Please enter your email address and password.');
+      return;
+    }
     try {
       const res = await api.post<{ access_token: string; user: ApiUser }>('/auth/login', {
         email: email.trim(),
@@ -157,14 +168,18 @@ export default function AccountsPage() {
 
   async function updateProfile() {
     if (!user) return;
-    if (!name.trim() || !phone.trim()) {
-      setMessage('Name and phone number are required.');
+    if (!name.trim()) {
+      setMessage('Name is required.');
+      return;
+    }
+    if (phone.trim() && !/^[6-9][0-9]{9}$/.test(phone.trim())) {
+      setMessage('Enter a 10-digit Indian mobile number, or leave it blank.');
       return;
     }
     try {
       const res = await api.patch<ApiUser>('/me', {
         full_name: name.trim(),
-        phone: phone.trim(),
+        phone: phone.trim() || null,
       });
       setUser(toUser(res.data));
       setMessage('Profile updated successfully.');
@@ -302,7 +317,9 @@ export default function AccountsPage() {
             <div className="y-kicker">Welcome aboard</div>
             <h1 className="y-title">Sign in to RailYatri</h1>
             <p className="y-sub">Log in to manage your account and saved passengers.</p>
-            <form className="y-form" onSubmit={(event) => { event.preventDefault(); login(); }}>
+            {/* noValidate: our own checks show their message in the alert below; the browser's
+                tooltips are easy to miss and blocked the submit without saying why. */}
+            <form className="y-form" noValidate onSubmit={(event) => { event.preventDefault(); login(); }}>
               <div className="y-field"><label htmlFor="login-email">Email address</label><input id="login-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
               <div className="y-field"><label htmlFor="login-password">Password</label><input id="login-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
               {message && <div className="y-message error" role="alert">{message}</div>}
@@ -317,12 +334,12 @@ export default function AccountsPage() {
             <div className="y-kicker">Start your journey</div>
             <h1 className="y-title">Create an account</h1>
             <p className="y-sub">Enter your details to get started with RailYatri.</p>
-            <form className="y-form" onSubmit={(event) => { event.preventDefault(); register(); }}>
+            <form className="y-form" noValidate onSubmit={(event) => { event.preventDefault(); register(); }}>
               <div className="y-field"><label htmlFor="reg-name">Full name</label><input id="reg-name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} required /></div>
               <div className="y-field"><label htmlFor="reg-email">Email address</label><input id="reg-email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
-              <div className="y-field"><label htmlFor="reg-phone">Phone number</label><input id="reg-phone" type="tel" autoComplete="tel" inputMode="numeric" pattern="[6-9][0-9]{9}" title="10-digit mobile number" value={phone} onChange={(e) => setPhone(e.target.value)} required /></div>
+              <div className="y-field"><label htmlFor="reg-phone">Phone number (optional)</label><input id="reg-phone" type="tel" autoComplete="tel" inputMode="numeric" title="10-digit mobile number" value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
               <div className="y-field"><label htmlFor="reg-password">Password (minimum 8 characters)</label><input id="reg-password" type="password" autoComplete="new-password" minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
-                            {message && <div className="y-message error" role="alert">{message}</div>}
+              {message && <div className="y-message error" role="alert">{message}</div>}
               <button className="y-btn" type="submit">Create account →</button>
             </form>
             <p className="y-switch">Already registered? <button className="y-link" onClick={() => { setPage('login'); setMessage(''); }}>Sign in</button></p>
@@ -341,7 +358,7 @@ export default function AccountsPage() {
             </div>
             <div className="y-card" style={{ marginTop: 12 }}>
               <div className="y-row"><div><h2>Account details</h2><p className="y-muted">Your registered contact information</p></div><button className="y-btn secondary" onClick={openProfile}>Edit profile</button></div>
-              <dl className="y-details"><div><dt>Name</dt><dd>{user.name}</dd></div><div><dt>Email</dt><dd>{user.email}</dd></div><div><dt>Phone</dt><dd>{user.phone}</dd></div></dl>
+              <dl className="y-details"><div><dt>Name</dt><dd>{user.name}</dd></div><div><dt>Email</dt><dd>{user.email}</dd></div><div><dt>Phone</dt><dd>{user.phone || '—'}</dd></div></dl>
               <button className="y-btn" onClick={() => { setPage('passengers'); setMessage(''); }}>Manage saved passengers →</button>
             </div>
           </>
@@ -355,7 +372,7 @@ export default function AccountsPage() {
             <form className="y-form" onSubmit={(event) => { event.preventDefault(); updateProfile(); }}>
               <div className="y-field"><label htmlFor="profile-name">Full name</label><input id="profile-name" value={name} onChange={(e) => setName(e.target.value)} required /></div>
               <div className="y-field"><label htmlFor="profile-email">Email address (read-only)</label><input id="profile-email" type="email" value={user.email} readOnly /></div>
-              <div className="y-field"><label htmlFor="profile-phone">Phone number</label><input id="profile-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required /></div>
+              <div className="y-field"><label htmlFor="profile-phone">Phone number (optional)</label><input id="profile-phone" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
               {message && <div className="y-message" role="status">{message}</div>}
               <div className="y-row"><button className="y-btn" type="submit">Save changes</button><button className="y-btn secondary" type="button" onClick={() => { setPage('dashboard'); setMessage(''); }}>Cancel</button></div>
             </form>

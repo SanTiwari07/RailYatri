@@ -70,6 +70,11 @@ export function errorMessage(error: unknown): string {
   if (axios.isAxiosError(error)) {
     const detail = error.response?.data?.detail;
     if (typeof detail === "string") return detail;
+    // FastAPI validation errors (422) carry a list of {loc, msg}; show the first one.
+    if (Array.isArray(detail) && typeof detail[0]?.msg === "string") {
+      const field = detail[0].loc?.at?.(-1);
+      return typeof field === "string" ? `${field.replace(/_/g, " ")}: ${detail[0].msg}` : detail[0].msg;
+    }
     if (!error.response) return "Cannot reach the server. Check your connection.";
   }
   return "Something went wrong. Please try again.";

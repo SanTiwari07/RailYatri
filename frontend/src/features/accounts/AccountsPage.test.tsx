@@ -74,14 +74,65 @@ describe("AccountsPage", () => {
     await userEvent.click(screen.getByRole("button", { name: /create an account/i }));
     await userEvent.type(screen.getByLabelText("Full name"), "Asha Rao");
     await userEvent.type(screen.getByLabelText("Email address"), "asha@example.com");
-    await userEvent.type(screen.getByLabelText("Phone number"), "9876543210");
+    await userEvent.type(screen.getByLabelText(/Phone number/), "9876543210");
     await userEvent.type(screen.getByLabelText(/Password/), "short");
-    const form = screen.getByRole("button", { name: /create account/i }).closest("form")!;
-    form.noValidate = true;
     await userEvent.click(screen.getByRole("button", { name: /create account/i }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("at least 8 characters");
     expect(post).not.toHaveBeenCalled();
+  });
+
+  it("says which fields are missing instead of silently blocking the submit", async () => {
+    const post = vi.spyOn(api, "post");
+    renderAt("/accounts");
+
+    await userEvent.click(screen.getByRole("button", { name: /create an account/i }));
+    await userEvent.type(screen.getByLabelText("Email address"), "asha@example.com");
+    await userEvent.type(screen.getByLabelText(/Password/), "correct horse");
+    await userEvent.click(screen.getByRole("button", { name: /create account/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Please enter your full name.");
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("signs up without a phone number", async () => {
+    vi.spyOn(api, "post").mockResolvedValue({
+      data: { access_token: "jwt-new", user: { ...apiUser, phone: null } },
+    });
+    vi.spyOn(api, "get").mockResolvedValue({ data: [] });
+    renderAt("/accounts");
+
+    await userEvent.click(screen.getByRole("button", { name: /create an account/i }));
+    await userEvent.type(screen.getByLabelText("Full name"), "Asha Rao");
+    await userEvent.type(screen.getByLabelText("Email address"), "Asha@Example.com");
+    await userEvent.type(screen.getByLabelText(/Password/), "correct horse");
+    await userEvent.click(screen.getByRole("button", { name: /create account/i }));
+
+    expect(await screen.findByText(/Welcome, Asha/)).toBeInTheDocument();
+    expect(api.post).toHaveBeenCalledWith("/auth/signup", {
+      full_name: "Asha Rao",
+      email: "asha@example.com",
+      phone: null,
+      password: "correct horse",
+    });
+    expect(getToken()).toBe("jwt-new");
+  });
+
+  it("shows a readable message for a 422 validation error", async () => {
+    vi.spyOn(api, "post").mockRejectedValue({
+      isAxiosError: true,
+      response: {
+        status: 422,
+        data: { detail: [{ loc: ["body", "full_name"], msg: "String should have at least 1 character" }] },
+      },
+    });
+    renderAt("/accounts");
+
+    await userEvent.type(screen.getByLabelText("Email address"), "asha@example.com");
+    await userEvent.type(screen.getByLabelText("Password"), "x");
+    await userEvent.click(screen.getByRole("button", { name: /sign in/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("full name: String should have at least 1 character");
   });
 
   it("resumes a stored session and logs out cleanly", async () => {

@@ -13,6 +13,10 @@ COPY backend backend
 COPY db db
 
 WORKDIR /srv/backend
+# Run as an unprivileged user (the app only reads its files)
+RUN useradd --create-home --uid 10001 app
+USER app
+
 EXPOSE 8000
 
 # The API; docker-compose overrides the command for the migrate and worker services.
